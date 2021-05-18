@@ -1,0 +1,160 @@
+---
+title: "Kemiskinan di Kabupaten/Kota Jawa Barat"
+author: "Eka Pramudita"
+date: "5/17/2021"
+output: pdf_document
+---
+
+## Memilih Library yang Akan Digunakan
+```{r}
+library(tidyverse)
+library(olsrr)
+```
+
+## Mengambil Data
+```{r}
+data <- read.csv("Kemiskinan - Soal 7.csv")
+sapply(data, class) # check data types
+```
+
+## Transformasi Data
+
+Karena terdapat variabel numerik yang masih memiliki tipe data character,
+maka perlu dilakukan konversi ke variabel numerik. Selain itu, penulisan
+desimal yang ditulis dalam koma perlu diubah menjadi penulisan dalam titik.
+
+```{r}
+data$persentase_penduduk_miskin.persen. <- 
+  as.double(gsub(',', '.', data$persentase_penduduk_miskin.persen.))
+
+data$indeks_pembangunan_manusia <- 
+  as.double(gsub(',', '.', data$indeks_pembangunan_manusia))
+
+data$angka_harapan_hidup..tahun. <- 
+  as.double(gsub(',', '.', data$angka_harapan_hidup..tahun.))
+
+data$angka_harapan_lama_sekolah.tahun. <- 
+  as.double(gsub(',', '.', data$angka_harapan_lama_sekolah.tahun.))
+
+data$tingkat_pengangguran_terbuka.persen. <- 
+  as.double(gsub(',', '.', data$tingkat_pengangguran_terbuka.persen.))
+```
+
+## Data Slicing dan Scaling
+
+Variabel yang diperlukan akan dipilih untuk dimasukkan ke model inisiasi.
+Proses data scaling juga dilakukan agar efek dari variabel dapat diukur
+melalui koefisien.
+
+```{r}
+scaled.data <- scale(data[c(7:13)], center = TRUE, scale = TRUE)
+scaled.data <- cbind(data[6], as.data.frame(scaled.data))
+```
+
+## Multiple Linear Regression (Inisiasi)
+
+Setelah data sudah bersih, kemudian dilakukan inisiasi model.
+Dilakukan pemodelan regresi linear berganda dengan memasukkan
+semua variabel di dalam scaled data.
+
+Namun seperti yang terlihat pada summary, hanya variabel PDRB
+yang signifikan pada model menurut p-value, sehingga perlu
+dilakukan metode Stepwise Regression untuk memperoleh model
+dengan hasil yang optimal.
+
+```{r}
+model <- lm(persentase_penduduk_miskin.persen. ~ indeks_pembangunan_manusia 
+            + angka_harapan_hidup..tahun. + angka_harapan_lama_sekolah.tahun. 
+            + pdrb_harga_konstan.miliar.rupiah. + pengeluaran_per_kapita.ribu.rupiah. 
+            + kepadatan_penduduk.jiwa.km2. + tingkat_pengangguran_terbuka.persen., 
+            data = scaled.data)
+summary(model)
+```
+
+## Stepwise Regression
+
+Metode stepwise regression diimplementasikan menggunakan
+ols_step_both_p dari package olsrr. Model akan dipilih
+menurut p-value karena tujuan dari pemodelan ini adalah
+untuk mengetahui faktor mana saja yang memiliki pengaruh,
+bukan untuk melakukan prediksi dengan dataset yang lain.
+
+pent dalam code menyatakan nilai maksimum p-value dari 
+variabel yang akan dimasukkan ke dalam model, sedangkan prem 
+menyatakan nilai minimum p-value dari variabel yang akan
+dihapus dari model. Untuk pemodelan ini diambil nilai 0.1
+sebagai pent dan 0.3 sebagai prem.
+
+```{r}
+ols_step_both_p(model, pent = 0.1, prem = 0.3, details = FALSE)
+```
+
+Seperti yang ditunjukkan pada summary bahwa variabel yang signifikan
+adalah Indeks Pembangunan Manusia dan PDRB Harga Konstan, maka model
+yang akan dibentuk hanya akan membawa dua variabel tersebut.
+
+```{r}
+model1 <- lm(persentase_penduduk_miskin.persen. ~ indeks_pembangunan_manusia + pdrb_harga_konstan.miliar.rupiah., data = scaled.data)
+summary(model1)
+AIC(model1)
+```
+
+p-value dari model yang telah dibuat memiliki nilai di bawah
+0.1, sesuai dengan nilai pent yang ditentukan sebelumnya.
+
+## Pengecekan asumsi
+
+```{r}
+# Linearity
+plot(scaled.data)
+
+# Multivariate Normal and Homoscedasticty
+plot(model1, which=1:2)
+
+# Multicollinearity
+car::vif(model1)
+```
+
+- Asumsi Linearitas
+Seperti yang ditunjukkan pada plot, dapat terlihat hubungan linear
+dari tiap pasang variabel di data.
+- Homoskedastisitas
+Seperti yang terlihat di grafik Residual vs Fitted, pola scatterplot
+cenderung tidak terbentuk sehingga dapat disimpulkan bahwa asumsi
+homoskedastisitas terpenuhi.
+- Multivariat Normal
+Seperti yang terlihat di Normal Q-Q plot, standardized residuals
+mengikuti normal plot, maka asumsi kenormalan terpenuhi.
+- Tidak ada multikolinearitas
+Nilai VIF dari kedua variabel adalah 1.09, maka dapat disimpulkan
+bahwa tidak ada multikolinearitas dalam model karena nilai VIF
+di bawah 10.
+
+## Koefisien
+
+Koefisien model menunjukkan seberapa besar pengaruh variabel
+terhadap model.
+
+```{r}
+model1$coefficients
+```
+
+Jika diambil nilai mutlak dari koefisien tersebut, maka Indeks Pembangunan
+Manusia memberikan efek yang paling besar dalam model. Semua variabel
+memiliki koefisien negatif, artinya setiap penambahan nilai pada variabel-
+variabel tersebut akan menurunkan Persentase Penduduk Miskin.
+
+## Kesimpulan dan Rekomendasi
+
+Dari penjelasan pada bagian Koefisien, dapat disimpulkan bahwa:
+
+1. Peningkatan Indeks Pembangunan Manusia (IPM) harus diperhatikan dengan serius
+oleh pemerintah. Program-program pemerintah provinsi harus fokus pada menambah faktor-
+faktor yang ikut mendongkrak (IPM) yaitu angka harapan hidup, literasi, pendidikan
+dan standar hidup. Peningkatan IPM akan secara efektif menurunkan Persentase
+Penduduk Miskin di Kabupaten/Kota di Jawa Barat.
+
+2. PDRB atau Produk Domestik Regional Bruto dapat dilihat sebagai kegiatan ekonomi.
+Program pemerintah provinsi harus berfokus pada peningkatan aktivitas ekonomi
+dengan mengelola sumber daya alam dengan baik, meningkatkan kualitas manusia,
+mengembangkan inovasi kewirausahaan, serta mengembangkan teknologi.
